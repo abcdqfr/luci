@@ -36,4 +36,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ipk-${{ matrix.arch }}
-          path: bin/packages/${{ matrix.arch }}/packages/luci_fork/luci-app-kge-vpn-watchdog*.ipk
+          path: bin/**/luci-app-kge-vpn-watchdog*.ipk
