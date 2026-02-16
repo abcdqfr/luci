@@ -28,12 +28,12 @@ jobs:
         uses: openwrt/gh-action-sdk@main
         env:
           ARCH: ${{ matrix.arch }}
-          # Avoid duplicate feed name: default feeds.conf has src-git luci; we add repo as luci-fork.
-          FEEDNAME: luci-fork
+          # Avoid duplicate feed name: default feeds.conf has src-git luci; we add repo as luci_fork.
+          FEEDNAME: luci_fork
           PACKAGES: luci-app-kge-vpn-watchdog
 
       - name: Upload IPK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ipk-${{ matrix.arch }}
-          path: bin/packages/*/luci-fork/luci-app-kge-vpn-watchdog*.ipk
+          path: bin/packages/*/luci_fork/luci-app-kge-vpn-watchdog*.ipk
