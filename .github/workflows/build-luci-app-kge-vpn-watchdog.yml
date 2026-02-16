@@ -2,7 +2,7 @@
 #   .github/workflows/build-luci-app-kge-vpn-watchdog.yml
 #
 # Use from a fork that already has applications/luci-app-kge-vpn-watchdog/ added.
-# This mirrors the SDK-based build upstream runs on PRs; when green here, open the PR.
+# Stable 23.05 SDK → .ipk only (opkg). GL.iNet latest stable = opkg only. See docs/PACKAGE-FORMAT-IPK-APK.md.
 
 name: Build luci-app-kge-vpn-watchdog
 
@@ -18,8 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Our hardware first (e.g. GL.iNet BE3600). x86_64 only if added back later.
       matrix:
-        arch: [x86_64, aarch64_generic]
+        arch: [aarch64_generic-23.05.5]
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +29,6 @@ jobs:
         uses: openwrt/gh-action-sdk@main
         env:
           ARCH: ${{ matrix.arch }}
-          # Avoid duplicate feed name: default feeds.conf has src-git luci; we add repo as luci_fork.
           FEEDNAME: luci_fork
           PACKAGES: luci-app-kge-vpn-watchdog
 
@@ -36,5 +36,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ipk-${{ matrix.arch }}
-          # SDK outputs .apk under bin/packages/<arch>/<feed>/ (no extra "packages" subdir).
-          path: bin/packages/${{ matrix.arch }}/luci_fork/luci-app-kge-vpn-watchdog*.apk
+          path: bin/packages/${{ matrix.arch }}/**/luci-app-kge-vpn-watchdog*.ipk
