@@ -8,9 +8,9 @@ name: Build luci-app-kge-vpn-watchdog
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, luci-app-kge-vpn-watchdog]
   pull_request:
-    branches: [master, main]
+    branches: [master, main, luci-app-kge-vpn-watchdog]
 
 jobs:
   build:
