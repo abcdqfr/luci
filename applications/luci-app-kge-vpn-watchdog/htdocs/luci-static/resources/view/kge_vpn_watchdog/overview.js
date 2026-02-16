@@ -69,7 +69,7 @@ return view.extend({
 				const s2 = m.section(form.TypedSection, 'watchdog', _('Expert'));
 				s2.anonymous = true;
 				s2.option(form.Value, 'sites_file', _('Sites file path')).placeholder = '/usr/share/kge-vpn-watchdog/sites.conf';
-				s2.option(form.Value, 'vpn_iface', _('VPN interface override')).placeholder = 'wgclient1';
+				s2.option(form.Value, 'vpn_iface', _('VPN interface override')).placeholder = _('Leave empty to auto-detect');
 				s2.option(form.Value, 'polling_iface', _('Polling interface')).placeholder = 'wgclient_poll';
 				s2.option(form.Value, 'sleep_after_switch', _('Sleep after switch (s)')).placeholder = '3';
 				s2.option(form.Value, 'curl_connect_timeout', _('Curl connect timeout (s)')).placeholder = '3';

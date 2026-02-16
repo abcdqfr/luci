@@ -26,15 +26,26 @@ function sites_path() {
 function get_wg_group_id() {
 	let vpn_iface = get_uci('vpn_iface', '');
 	if (vpn_iface === '') {
-		// detect first wgclient
+		// Detect only what exists in UCI. Contract: network.IFACE.proto=wgclient|wireguard, .config=peer id. See BE3600-LUCI-FILE-FACTS §8.
 		let u = cursor();
 		u.load('network');
 		let nets = u.get('network') || {};
 		for (let k in nets) {
 			let v = nets[k];
-			if (v && v['.type'] === 'interface' && v.proto === 'wgclient') {
+			if (!v || v['.type'] !== 'interface') continue;
+			if (v.proto === 'wgclient' || v.proto === 'wireguard') {
 				vpn_iface = k;
 				break;
+			}
+			let cfg = v.config;
+			if (cfg && /^peer_[0-9]+$/.test(cfg)) {
+				u.load('wireguard');
+				if (u.get('wireguard', cfg, 'public_key')) {
+					vpn_iface = k;
+					u.unload();
+					break;
+				}
+				u.unload();
 			}
 		}
 		u.unload();

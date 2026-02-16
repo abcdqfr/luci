@@ -1,6 +1,21 @@
 # UCI: wg iface, current peer, peer list. Expects VPN_IFACE.
-# POLLING_IFACE_NAME: name of the dedicated polling interface (default wgclient_poll).
-detect_wg_iface() { uci show network 2>/dev/null | grep "\.proto='wgclient'" | head -1 | sed "s/^network\.\([^.]*\)\..*/\1/"; }
+# Contract: netifd proto wgclient (GL) / wireguard (vanilla). network.IFACE has proto and option config=<peer_id>.
+# wireguard UCI has peers (peer_<id>). See docs/BE3600-LUCI-FILE-FACTS.md §8. We detect only what exists; no invented names.
+# POLLING_IFACE_NAME: dedicated polling interface (default wgclient_poll), created/removed by this script only.
+detect_wg_iface() {
+  local name peer
+  name=$(uci show network 2>/dev/null | grep "\.proto='wgclient'" | head -1 | sed "s/^network\.\([^.]*\)\..*/\1/")
+  [ -n "$name" ] && echo "$name" && return
+  name=$(uci show network 2>/dev/null | grep "\.proto='wireguard'" | head -1 | sed "s/^network\.\([^.]*\)\..*/\1/")
+  [ -n "$name" ] && echo "$name" && return
+  for name in $(uci show network 2>/dev/null | sed -n "s/^network\.\([a-z0-9_]*\)=interface/\1/p"); do
+    peer=$(uci get "network.${name}.config" 2>/dev/null)
+    case "$peer" in peer_[0-9]*)
+      uci get "wireguard.${peer}.public_key" >/dev/null 2>&1 && echo "$name" && return
+    ;; esac
+  done
+  return 1
+}
 current() { uci get "network.${VPN_IFACE}.config" 2>/dev/null; }
 peers_list() {
   cur=$(uci get "network.${VPN_IFACE}.config" 2>/dev/null)

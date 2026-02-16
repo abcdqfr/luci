@@ -1,4 +1,5 @@
 # KGE VPN Watchdog LuCI app. Enable/disable, run now, logs. Engine = sh scripts.
+# call BuildPackage (via luci.mk) - so OpenWrt feed scan discovers this package
 include $(TOPDIR)/rules.mk
 
 LUCI_TITLE:=KGE VPN Watchdog
