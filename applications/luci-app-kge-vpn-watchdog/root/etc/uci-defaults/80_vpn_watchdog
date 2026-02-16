@@ -1,0 +1,20 @@
+#!/bin/sh
+# Create /etc/config/vpn_watchdog with all options. LuCI and script both read this.
+touch /etc/config/vpn_watchdog
+uci -q get vpn_watchdog.@watchdog[0] >/dev/null 2>&1 || uci add vpn_watchdog watchdog
+uci -q set vpn_watchdog.@watchdog[0].enabled=1
+uci -q set vpn_watchdog.@watchdog[0].log_path=
+uci -q set vpn_watchdog.@watchdog[0].sites_file=
+uci -q set vpn_watchdog.@watchdog[0].vpn_iface=
+uci -q set vpn_watchdog.@watchdog[0].polling_iface=
+uci -q set vpn_watchdog.@watchdog[0].sleep_after_switch=3
+uci -q set vpn_watchdog.@watchdog[0].curl_connect_timeout=3
+uci -q set vpn_watchdog.@watchdog[0].curl_max_time=8
+uci -q set vpn_watchdog.@watchdog[0].cron_enabled=1
+uci -q set vpn_watchdog.@watchdog[0].cron_interval=5
+uci -q set vpn_watchdog.@watchdog[0].cron_schedule=
+uci -q set vpn_watchdog.@watchdog[0].run_timeout=120
+uci -q set vpn_watchdog.@watchdog[0].log_tail_lines=200
+uci -q set vpn_watchdog.@watchdog[0].peer_whitelist=
+uci commit vpn_watchdog
+return 0

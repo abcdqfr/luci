@@ -1,0 +1,13 @@
+{
+	"luci-app-kge-vpn-watchdog": {
+		"description": "KGE VPN Watchdog: full config, run now, logs, sites, cron",
+		"read": {
+			"uci": ["vpn_watchdog", "network", "wireguard"],
+			"ubus": {"luci.vpn_watchdog": ["get_status", "get_log", "get_sites", "get_peers", "run_now"]}
+		},
+		"write": {
+			"uci": ["vpn_watchdog"],
+			"ubus": {"luci.vpn_watchdog": ["run_now", "set_sites", "set_peer_whitelist", "apply_cron"]}
+		}
+	}
+}

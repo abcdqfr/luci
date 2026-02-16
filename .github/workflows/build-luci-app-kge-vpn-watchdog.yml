@@ -1,0 +1,38 @@
+# Copy this file into your openwrt/luci fork as:
+#   .github/workflows/build-luci-app-kge-vpn-watchdog.yml
+#
+# Use from a fork that already has applications/luci-app-kge-vpn-watchdog/ added.
+# This mirrors the SDK-based build upstream runs on PRs; when green here, open the PR.
+
+name: Build luci-app-kge-vpn-watchdog
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    name: ${{ matrix.arch }} build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64_generic]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build package
+        uses: openwrt/gh-action-sdk@main
+        env:
+          ARCH: ${{ matrix.arch }}
+          FEEDNAME: luci
+          PACKAGES: luci-app-kge-vpn-watchdog
+
+      - name: Upload IPK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipk-${{ matrix.arch }}
+          path: bin/packages/*/luci/luci-app-kge-vpn-watchdog*.ipk

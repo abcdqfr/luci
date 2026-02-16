@@ -1,0 +1,3 @@
+#!/bin/sh
+# Wrapper so PATH has one entry point. Engine lives in /usr/share/kge-vpn-watchdog/.
+exec /usr/share/kge-vpn-watchdog/vpn-health-check.sh "$@"

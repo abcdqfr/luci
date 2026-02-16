@@ -1,0 +1,13 @@
+{
+  "admin/services/kge_vpn_watchdog": {
+    "title": "KGE VPN Watchdog",
+    "order": 70,
+    "action": {
+      "type": "view",
+      "path": "kge_vpn_watchdog/overview"
+    },
+    "depends": {
+      "acl": [ "luci-app-kge-vpn-watchdog" ]
+    }
+  }
+}
