@@ -32,11 +32,9 @@ jobs:
           FEEDNAME: luci_fork
           PACKAGES: luci-app-kge-vpn-watchdog
 
-      - name: Find IPKs
-        run: find bin -name '*.ipk' 2>/dev/null || true; ls -laR bin 2>/dev/null | head -80 || true
-
       - name: Upload IPK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ipk-${{ matrix.arch }}
-          path: bin/**/luci-app-kge-vpn-watchdog*.ipk
+          # SDK outputs .apk under bin/packages/<arch>/<feed>/ (no extra "packages" subdir).
+          path: bin/packages/${{ matrix.arch }}/luci_fork/luci-app-kge-vpn-watchdog*.apk
