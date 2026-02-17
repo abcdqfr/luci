@@ -4,7 +4,8 @@
 let cursor = require('uci').cursor;
 let fs = require('fs');
 let script_path = '/usr/bin/kge-vpn-watchdog';
-let default_sites_path = '/usr/share/kge-vpn-watchdog/sites.conf';
+// Writable by default: /usr is read-only on OpenWrt; use overlay /etc (see docs/LUCI-LESSONS.md).
+let default_sites_path = '/etc/kge-vpn-watchdog/sites.conf';
 
 let uci_section = null;
 
@@ -104,32 +105,44 @@ function infer_region(host, desc) {
 	return '';
 }
 
+// Wireguard UCI on device: section type "peers", options end_point (host:port), name, location, group_id, public_key.
+// See: uci show wireguard (peer sections = wireguard.peer_XXXX=peers).
+function collect_peers_from_wireguard(gid) {
+	let peers = [];
+	let u = cursor();
+	u.load('wireguard');
+	let secs = u.sections('wireguard', 'peers') || [];
+	for (let i = 0; i < secs.length; i++) {
+		let sec = secs[i];
+		let sid = sec['.name'];
+		if (!sid || !/^peer_[0-9]+$/.test(sid)) continue;
+		let pk = u.get('wireguard', sid, 'public_key');
+		if (!pk) continue;
+		if (gid != null) {
+			let sgid = u.get('wireguard', sid, 'group_id');
+			if (sgid !== gid) continue;
+		}
+		let endpoint = u.get('wireguard', sid, 'end_point') || u.get('wireguard', sid, 'endpoint_host') || '';
+		if (!endpoint && (u.get('wireguard', sid, 'endpoint_host') || u.get('wireguard', sid, 'host')))
+			endpoint = (u.get('wireguard', sid, 'endpoint_host') || u.get('wireguard', sid, 'host') || '') + ':' + (u.get('wireguard', sid, 'endpoint_port') || u.get('wireguard', sid, 'port') || '');
+		let desc = u.get('wireguard', sid, 'name') || u.get('wireguard', sid, 'location') || u.get('wireguard', sid, 'description') || '';
+		let region = infer_region(endpoint, desc);
+		peers.push({ id: sid, endpoint: endpoint, description: desc, region: region });
+	}
+	u.unload();
+	peers.sort((a, b) => (a.id < b.id ? -1 : 1));
+	return peers;
+}
+
 let methods = {
 	get_peers: {
 		call: function() {
 			let gid = get_wg_group_id();
-			let peers = [];
 			let whitelist_raw = get_uci('peer_whitelist', '') || '';
 			let whitelist = (whitelist_raw === '') ? [] : whitelist_raw.trim().split(/\s+/);
-			if (!gid) return { peers: peers, whitelist: whitelist };
-			let u = cursor();
-			u.load('wireguard');
-			let wg = u.get('wireguard') || {};
-			for (let name in wg) {
-				let s = wg[name];
-				if (!s || (s['.type'] && s['.type'] === 'wireguard')) continue;
-				if (s.group_id !== gid) continue;
-				let peerId = (s['.name'] && /^peer_[0-9]+$/.test(s['.name'])) ? s['.name'] : name;
-				if (!/^peer_[0-9]+$/.test(peerId)) continue;
-				let host = s.endpoint_host || s.host || '';
-				let port = s.endpoint_port || s.port || '';
-				let endpoint = (host && port) ? (host + ':' + port) : (host || port || '');
-				let desc = s.description || s.name || '';
-				let region = infer_region(host, desc);
-				peers.push({ id: peerId, endpoint: endpoint, description: desc, region: region });
-			}
-			u.unload();
-			peers.sort((a, b) => (a.id < b.id ? -1 : 1));
+			let peers = collect_peers_from_wireguard(gid);
+			if (peers.length === 0 && gid == null)
+				peers = collect_peers_from_wireguard(null);
 			return { peers: peers, whitelist: whitelist };
 		}
 	},
@@ -202,19 +215,25 @@ let methods = {
 			return { content: content, path: path };
 		}
 	},
-	set_sites: {
-		args: { content: '' },
-		call: function(req) {
-			let path = sites_path();
-			let content = (req.args && req.args.content != null) ? String(req.args.content) : '';
-			try {
-				fs.writefile(path, content);
-				return { ok: true, path: path };
-			} catch (e) {
-				return { ok: false, error: e.message || String(e) };
+		set_sites: {
+			args: { content: '' },
+			call: function(req) {
+				let path = sites_path();
+				let content = (req.args && req.args.content != null) ? String(req.args.content) : '';
+				let dir = fs.dirname(path);
+				if (dir && !fs.access(dir, 'f')) {
+					fs.mkdir(dir);
+				}
+				try {
+					fs.writefile(path, content);
+					return { ok: true, path: path };
+				} catch (e) {
+					let msg = fs.error() || (e && (e.message || e.code || String(e))) || 'Unknown error';
+					if (msg === '[object Object]') msg = 'Write failed (permission or read-only?)';
+					return { ok: false, error: msg };
+				}
 			}
-		}
-	},
+		},
 	apply_cron: {
 		call: function() {
 			let enabled = get_uci('cron_enabled', '1') === '1';
@@ -236,7 +255,8 @@ let methods = {
 				fs.writefile(crontab_path, out);
 				return { ok: true, cron_line: cron_line || '(disabled)' };
 			} catch (e) {
-				return { ok: false, error: e.message || String(e) };
+				let msg = fs.error() || (e && (e.message || String(e))) || 'Cron write failed';
+				return { ok: false, error: msg };
 			}
 		}
 	},

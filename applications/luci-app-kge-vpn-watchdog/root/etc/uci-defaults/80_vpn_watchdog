@@ -1,10 +1,12 @@
 #!/bin/sh
 # Create /etc/config/vpn_watchdog with all options. LuCI and script both read this.
+# Writable site list lives under /etc (overlay); /usr is read-only (see docs/LUCI-LESSONS.md).
 touch /etc/config/vpn_watchdog
 uci -q get vpn_watchdog.@watchdog[0] >/dev/null 2>&1 || uci add vpn_watchdog watchdog
+mkdir -p /etc/kge-vpn-watchdog
 uci -q set vpn_watchdog.@watchdog[0].enabled=1
 uci -q set vpn_watchdog.@watchdog[0].log_path=
-uci -q set vpn_watchdog.@watchdog[0].sites_file=
+uci -q set vpn_watchdog.@watchdog[0].sites_file=/etc/kge-vpn-watchdog/sites.conf
 uci -q set vpn_watchdog.@watchdog[0].vpn_iface=
 uci -q set vpn_watchdog.@watchdog[0].polling_iface=
 uci -q set vpn_watchdog.@watchdog[0].sleep_after_switch=3

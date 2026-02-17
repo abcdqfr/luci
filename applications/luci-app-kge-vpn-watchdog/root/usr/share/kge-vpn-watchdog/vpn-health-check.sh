@@ -7,7 +7,9 @@ DIR="${SCRIPT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 # LuCI: read all from UCI (fallback to env/defaults)
 _u() { uci -q get vpn_watchdog.@watchdog[0]."$1" 2>/dev/null; }
 [ "$(_u enabled)" = "0" ] && exit 0
-SITES_FILE="${SITES_FILE:-$(_u sites_file)}"; [ -z "$SITES_FILE" ] && SITES_FILE="$DIR/sites.conf"
+# Default: UCI sites_file, else writable path if it exists (LuCI save), else packed (see docs/LUCI-LESSONS.md).
+SITES_FILE="${SITES_FILE:-$(_u sites_file)}"
+[ -z "$SITES_FILE" ] && { [ -f /etc/kge-vpn-watchdog/sites.conf ] && SITES_FILE=/etc/kge-vpn-watchdog/sites.conf || SITES_FILE="$DIR/sites.conf"; }
 VPN_IFACE="${VPN_IFACE:-$(_u vpn_iface)}"
 SLEEP="${SLEEP_AFTER_SWITCH:-$(_u sleep_after_switch)}"; [ -z "$SLEEP" ] && SLEEP=3
 DRY_RUN="${VPN_DRY_RUN:-0}"

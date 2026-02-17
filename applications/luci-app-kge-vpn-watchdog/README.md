@@ -6,6 +6,8 @@ LuCI UI for KGE VPN Watchdog: enable/disable, log path, Run now, log viewer. Eng
 
 **From OpenWrt build:** LuCI → Applications → luci-app-kge-vpn-watchdog, then `opkg install` the ipk.
 
+**Pre-built IPK (fork CI):** Build and download from your luci fork workflow (vpn-health: `make prepare-fork`, push branch, download artifact for your arch). Sideload: put the `.ipk` in vpn-health `out/` and run `ROUTER=root@host make sideload`.
+
 **Manual deploy:** Copy `root/` and `htdocs/` onto the device so that:
 
 - `root/etc/uci-defaults/80_vpn_watchdog` → `/etc/uci-defaults/80_vpn_watchdog`
