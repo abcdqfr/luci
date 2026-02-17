@@ -722,13 +722,28 @@ const dv = view.extend({
 
 		let addr = String(address).trim();
 		// make exception for legacy Docker Hub registry https://index.docker.io/v1/
-		if (addr.includes('index.docker.io'))
-			return addr.toLowerCase();
-		else {
-			addr = addr.replace(/^[a-z]+:\/\//i, '');
-			addr = addr.split('/')[0];
-			addr = addr.replace(/\/$/, '');
+		// Only treat as legacy Docker Hub if the actual hostname is exactly index.docker.io
+		try {
+			let hostPart = addr;
+			// If a scheme is present, use URL to parse the hostname
+			if (/^[a-z]+:\/\//i.test(addr)) {
+				const url = new URL(addr);
+				hostPart = url.hostname;
+			} else {
+				// Strip path/query after first slash for scheme-less inputs
+				hostPart = addr.split('/')[0];
+			}
+			if (hostPart && hostPart.toLowerCase() === 'index.docker.io') {
+				return 'index.docker.io';
+			}
+		} catch (e) {
+			// fall through to generic normalization on parse errors
 		}
+
+		addr = addr.replace(/^[a-z]+:\/\//i, '');
+		addr = addr.split('/')[0];
+		addr = addr.replace(/\/$/, '');
+
 		if (!addr) return null;
 		return addr.toLowerCase();
 	},
