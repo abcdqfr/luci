@@ -6,6 +6,10 @@
 
 var notMsg = false, errMsg = false;
 
+function escapeRegex(str) {
+	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /*
 	button handling
 */
@@ -30,7 +34,7 @@ function handleAction(ev) {
 						L.resolveDefault(fs.read_direct('/etc/adblock/adblock.blocklist'), '')
 							.then(function (res) {
 								var domain = document.getElementById('blocklist').value.trim().toLowerCase().replace(/[^a-z0-9\.\-]/g, '');
-								var pattern = new RegExp('^' + domain.replace(/[\.]/g, '\\.') + '$', 'm');
+								var pattern = new RegExp('^' + escapeRegex(domain) + '$', 'm');
 								if (res.search(pattern) === -1) {
 									var blocklist = res + domain + '\n';
 									fs.write('/etc/adblock/adblock.blocklist', blocklist);
@@ -68,7 +72,7 @@ function handleAction(ev) {
 						L.resolveDefault(fs.read_direct('/etc/adblock/adblock.allowlist'), '')
 							.then(function (res) {
 								var domain = document.getElementById('allowlist').value.trim().toLowerCase().replace(/[^a-z0-9\.\-]/g, '');
-								var pattern = new RegExp('^' + domain.replace(/[\.]/g, '\\.') + '$', 'm');
+								var pattern = new RegExp('^' + escapeRegex(domain) + '$', 'm');
 								if (res.search(pattern) === -1) {
 									var allowlist = res + domain + '\n';
 									fs.write('/etc/adblock/adblock.allowlist', allowlist);
