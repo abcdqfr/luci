@@ -18,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # Docker Hub openwrt/sdk: only active stable aarch64_generic 23.05 tag is 23.05.5.
+      # x86_64-23.05.5: active on Docker Hub, README example; produces .ipk. aarch64 build fails in SDK.
       matrix:
-        arch: [aarch64_generic-23.05.5]
+        arch: [x86_64-23.05.5]
 
     steps:
       - uses: actions/checkout@v4
