@@ -62,7 +62,7 @@ const i18n = L.Class.singleton({
 			dtype: source.type,
 			dinst: source.instance,
 			dsrc: source.ds
-		}).replace(/:/g, '\\:');
+		}).replace(/\\/g, '\\\\').replace(/:/g, '\\:');
 	}
 });
 
