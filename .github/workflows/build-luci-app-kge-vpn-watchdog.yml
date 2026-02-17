@@ -18,12 +18,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # x86_64-23.05.5: active on Docker Hub, README example; produces .ipk. aarch64 build fails in SDK.
+      # Our hardware: aarch64. Docker Hub openwrt/sdk aarch64_generic-23.05.5 active.
       matrix:
-        arch: [x86_64-23.05.5]
+        arch: [aarch64_generic-23.05.5]
 
     steps:
       - uses: actions/checkout@v4
+
+      # Feed must contain only our app so SDK uses its luci feed for rpcd-mod-luci (23.05).
+      # Logs: package/feeds/luci_fork/rpcd-mod-luci failed to build when full luci was the feed.
+      - name: Strip feed to luci-app-kge-vpn-watchdog only
+        run: |
+          rm -rf libs contrib modules protocols themes collections
+          for d in applications/*/; do [ "$d" = "applications/luci-app-kge-vpn-watchdog/" ] || rm -rf "$d"; done
 
       - name: Build package
         uses: openwrt/gh-action-sdk@main
