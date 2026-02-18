@@ -217,8 +217,8 @@ function check_all(sites_file, check_iface, connect_to, max_time, log_path) {
 		let name = parts[0] ? parts[0].trim() : '';
 		let url = parts[1] ? parts[1].trim() : '';
 		if (name === '' || name.indexOf('#') === 0 || url === '') continue;
-		let block = (typeof parts[2] === 'string' && parts[2].trim() !== '') ? parts[2].trim() : '-';
-		let success = (typeof parts[3] === 'string' && parts[3].trim() !== '') ? parts[3].trim() : '-';
+		let block = (type(parts[2]) === 'string' && parts[2].trim() !== '') ? parts[2].trim() : '-';
+		let success = (type(parts[3]) === 'string' && parts[3].trim() !== '') ? parts[3].trim() : '-';
 		if (!check_site(url, block, success, check_iface, connect_to, max_time)) {
 			log('site FAIL: ' + name, log_path);
 			return false;

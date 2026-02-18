@@ -1,10 +1,11 @@
 #!/usr/bin/env ucode
 'use strict';
+// LuCI RPC plugin: luci.vpn_watchdog (rpcd ucode). Status, peers, sites, cron, run_now.
 
 let cursor = require('uci').cursor;
 let fs = require('fs');
 let script_path = '/usr/bin/kge-vpn-watchdog';
-// Writable by default: /usr is read-only on OpenWrt; use overlay /etc (see docs/LUCI-LESSONS.md).
+// Sites path: default /etc (writable overlay); /usr is read-only on OpenWrt.
 let default_sites_path = '/etc/kge-vpn-watchdog/sites.conf';
 
 let uci_section = null;
@@ -33,7 +34,7 @@ function sites_path() {
 function get_wg_group_id() {
 	let vpn_iface = get_uci('vpn_iface', '');
 	if (vpn_iface === '') {
-		// Detect only what exists in UCI. Contract: network.IFACE.proto=wgclient|wireguard, .config=peer id. See BE3600-LUCI-FILE-FACTS §8.
+		// Detect WireGuard/wgclient interface from UCI network + wireguard peer refs.
 		let u = cursor();
 		u.load('network');
 		let nets = u.get_all('network') || {};
@@ -110,6 +111,16 @@ function infer_region(host, desc) {
 	for (let i = 0; i < pairs.length; i++) {
 		if (index(t, pairs[i][0]) >= 0) return pairs[i][1];
 	}
+	// Generic fallback for provider descriptions like "Denmark_dk-cph-wg-001" => DK
+	let d = lc('' + (desc || ''));
+	let segs = split(d, '_');
+	if (length(segs) > 1) {
+		let region_part = split(segs[1], '-');
+		if (length(region_part) > 0) {
+			let cc = region_part[0];
+			if (length(cc) === 2) return uc(cc);
+		}
+	}
 	return '';
 }
 
@@ -140,6 +151,40 @@ function collect_peers_from_wireguard(gid) {
 	return peers;
 }
 
+function trim_ws(s) {
+	return ltrim(rtrim('' + s));
+}
+
+function split_ws(s) {
+	let t = trim_ws(s);
+	return (t === '') ? [] : split(t, /\s+/);
+}
+
+function join_lines(arr, start) {
+	let out = '';
+	for (let i = start; i < length(arr); i++) {
+		out += arr[i];
+		if (i + 1 < length(arr)) out += "\n";
+	}
+	return out;
+}
+
+function join_space(arr) {
+	let out = '';
+	for (let i = 0; i < length(arr); i++) {
+		if (i > 0) out += ' ';
+		out += arr[i];
+	}
+	return out;
+}
+
+function has_non_comment_text(line) {
+	let t = ltrim('' + line);
+	if (t === '') return false;
+	if (index(t, '#') === 0) t = ltrim(substr(t, 1));
+	return t !== '';
+}
+
 let methods = {
 	get_peers: {
 		call: function() {
@@ -155,8 +200,13 @@ let methods = {
 	set_peer_whitelist: {
 		args: { peers: [] },
 		call: function(req) {
-			let list = req.args && Array.isArray(req.args.peers) ? req.args.peers : [];
-			let val = list.map(p => String(p).trim()).filter(p => peer_id_ok(p)).join(' ');
+			let list = (req.args && type(req.args.peers) === 'array') ? req.args.peers : [];
+			let selected = [];
+			for (let i = 0; i < length(list); i++) {
+				let p = trim_ws(list[i]);
+				if (peer_id_ok(p)) push(selected, p);
+			}
+			let val = join_space(selected);
 			try {
 				let u = cursor();
 				u.load('vpn_watchdog');
@@ -167,9 +217,9 @@ let methods = {
 					u.commit('vpn_watchdog');
 				}
 				u.unload();
-				return { ok: true, whitelist: val ? val.split(' ') : [] };
+				return { ok: true, whitelist: selected };
 			} catch (e) {
-				return { ok: false, error: e.message || String(e) };
+				return { ok: false, error: e.message || ('' + e) };
 			}
 		}
 	},
@@ -205,40 +255,41 @@ let methods = {
 				return { lines: '', path: '' };
 			let data = fs.readfile(path);
 			if (data === null) return { lines: '', path: path };
-			let arr = data.split("\n");
-			let start = arr.length > n ? arr.length - n : 0;
-			return { lines: arr.slice(start).join("\n"), path: path };
+			let arr = split('' + data, "\n");
+			let start = length(arr) > n ? length(arr) - n : 0;
+			return { lines: join_lines(arr, start), path: path };
 		}
 	},
 	get_sites: {
 		call: function() {
 			let path = sites_path();
-			let default_content = 'google\tgoogle.com\t-\t-\nwikipedia\twikipedia.org\t-\t-\n';
+			let default_content = 'reddit\treddit.com\tblocked|access.denied|captcha|cf-browser|challenge|verify\treddit\n'
+				+ 'youtube\tyoutube.com\tblocked|access.denied|captcha|cf-browser|challenge|verify\tyoutube\n'
+				+ 'wikipedia\twikipedia.org\tblocked|access.denied|captcha|cf-browser|challenge|verify\twikipedia\n';
 			if (!fs.access(path)) return { content: default_content, path: path };
 			let data = fs.readfile(path);
 			let content = (data !== null && data !== '') ? data : default_content;
 			return { content: content, path: path };
 		}
 	},
-		set_sites: {
-			args: { content: '' },
-			call: function(req) {
-				let path = sites_path();
-				let content = (req.args && req.args.content != null) ? String(req.args.content) : '';
-				let dir = fs.dirname(path);
-				if (dir && !fs.access(dir, 'f')) {
-					fs.mkdir(dir);
-				}
-				try {
-					fs.writefile(path, content);
-					return { ok: true, path: path };
-				} catch (e) {
-					let msg = fs.error() || (e && (e.message || e.code || String(e))) || 'Unknown error';
-					if (msg === '[object Object]') msg = 'Write failed (permission or read-only?)';
-					return { ok: false, error: msg };
-				}
+	set_sites: {
+		args: { content: '' },
+		call: function(req) {
+			let path = sites_path();
+			let content = (req.args && req.args.content != null) ? ('' + req.args.content) : '';
+			let dir = fs.dirname(path);
+			if (dir && !fs.access(dir))
+				fs.mkdir(dir);
+			try {
+				fs.writefile(path, content);
+				return { ok: true, path: path };
+			} catch (e) {
+				let msg = fs.error() || (e && (e.message || e.code || ('' + e))) || 'Unknown error';
+				if (msg === '[object Object]') msg = 'Write failed (permission or read-only?)';
+				return { ok: false, error: msg };
 			}
-		},
+		}
+	},
 	apply_cron: {
 		call: function() {
 			let enabled = get_uci('cron_enabled', '1') === '1';
@@ -253,14 +304,23 @@ let methods = {
 			let rest = '';
 			if (fs.access(crontab_path)) {
 				let data = fs.readfile(crontab_path);
-				if (data !== null) rest = data.split("\n").filter(function(l) { return l.indexOf(script_path) < 0 && l.replace(/^\s*#?/, '').length > 0; }).join("\n");
+				if (data !== null) {
+					let lines = split('' + data, "\n");
+					let kept = [];
+					for (let i = 0; i < length(lines); i++) {
+						let l = lines[i];
+						if (index(l, script_path) >= 0) continue;
+						if (has_non_comment_text(l)) push(kept, l);
+					}
+					rest = join_lines(kept, 0);
+				}
 			}
 			let out = (cron_line !== '' ? cron_line + "\n" : '') + (rest !== '' ? rest + "\n" : '');
 			try {
 				fs.writefile(crontab_path, out);
 				return { ok: true, cron_line: cron_line || '(disabled)' };
 			} catch (e) {
-				let msg = fs.error() || (e && (e.message || String(e))) || 'Cron write failed';
+				let msg = fs.error() || (e && (e.message || ('' + e))) || 'Cron write failed';
 				return { ok: false, error: msg };
 			}
 		}

@@ -1,4 +1,4 @@
-~~~'use strict';
+'use strict';
 // LuCI form sections: use s.option(FormClass, name, title), not s.add().
 'require form';
 'require view';
@@ -292,13 +292,9 @@ return view.extend({
     regionOrder.forEach(function (reg) {
       const rows = regionToPeers[reg] || [];
       const regionLabel = reg === NO_REGION ? _('No region') : reg;
-      const summaryContent = E('span', {}, [
-        E('strong', {}, regionLabel + ' (' + rows.length + ')'),
-        ' \u2002 ',
-        E('button', { type: 'button', class: 'btn cbi-button cbi-button-positive', style: 'margin-left: 0.5em;', click: function (e) { e.preventDefault(); setRegion(reg, true); } }, _('Select all')),
-        ' ',
-        E('button', { type: 'button', class: 'btn cbi-button', click: function (e) { e.preventDefault(); setRegion(reg, false); } }, _('Deselect all'))
-      ]);
+      const summaryText = regionLabel + ' (' + rows.length + ')';
+      const selectAllBtnReg = E('button', { type: 'button', class: 'btn cbi-button cbi-button-positive', style: 'margin-left: 0.5em;', click: function (e) { e.preventDefault(); setRegion(reg, true); } }, _('Select all'));
+      const deselectAllBtnReg = E('button', { type: 'button', class: 'btn cbi-button', click: function (e) { e.preventDefault(); setRegion(reg, false); } }, _('Deselect all'));
       const table = E('table', { class: 'table cbi-section-table', style: 'margin: 0.25em 0; width: 100%;' }, [
         E('thead', {}, E('tr', {}, [
           E('th', { style: 'width: 2em;' }, E('input', { type: 'checkbox', title: _('Select all'), click: function () { setRegion(reg, this.checked); } })),
@@ -315,9 +311,13 @@ return view.extend({
           ]);
         }))
       ]);
-      const details = E('details', { class: 'cbi-section', style: 'margin-bottom: 0.5em;' }, [
-        E('summary', { style: 'cursor: pointer; padding: 0.25em 0;' }, summaryContent),
+      const detailsContent = E('div', {}, [
+        E('div', { class: 'cbi-section-node', style: 'margin-bottom: 0.25em;' }, [selectAllBtnReg, ' ', deselectAllBtnReg]),
         E('div', { style: 'max-height: 14em; overflow: auto;' }, table)
+      ]);
+      const details = E('details', { class: 'cbi-section', style: 'margin-bottom: 0.5em;' }, [
+        E('summary', { style: 'cursor: pointer; padding: 0.25em 0; list-style: none;' }, summaryText),
+        detailsContent
       ]);
       peerListEl.appendChild(details);
     });
