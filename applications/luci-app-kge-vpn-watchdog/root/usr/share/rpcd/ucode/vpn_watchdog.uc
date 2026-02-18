@@ -250,7 +250,7 @@ let methods = {
 		args: { lines: 64 },
 		call: function (req) {
 			let path = get_uci('log_path') || '';
-			let n = req && req.args && req.args.lines ? parseInt(req.args.lines, 10) : parseInt(get_uci('log_tail_lines', '200'), 10);
+			let n = req && req.args && req.args.lines ? int(req.args.lines, 10) : int(get_uci('log_tail_lines', '200'), 10);
 			if (n < 1 || n > 10000) n = 200;
 			try {
 				if (path === '' || !fs.access(path))
@@ -341,13 +341,14 @@ let methods = {
 			let out = '';
 			try {
 				let dry = req && req.args && req.args.dry_run;
-				let timeout = parseInt(get_uci('run_timeout', '120'), 10) || 120;
+				let timeout = int(get_uci('run_timeout', '120'), 10) || 120;
 				if (timeout < 1 || timeout > 600) timeout = 120;
 				let shCmd = dry ? ('VPN_DRY_RUN=1 ' + script_path + ' 2>&1') : (script_path + ' 2>&1');
 				try {
 					let run = require('run');
 					let result = run(shCmd, timeout);
-					code = (result && result.code != null) ? Number(result.code) : 255;
+					let c = (result && result.code != null) ? int(result.code, 10) : null;
+					code = (c != null && c === c) ? c : 255;
 					out = (result && result.stdout != null) ? String(result.stdout) : '';
 				} catch (e) {
 					try {
@@ -356,7 +357,8 @@ let methods = {
 						out = fp.read('all');
 						out = (out != null) ? String(out) : '';
 						let c = fp.close();
-						code = (c != null && c >= 0) ? Number(c) : 255;
+						let c2 = (c != null && c >= 0) ? int(c, 10) : null;
+						code = (c2 != null && c2 === c2) ? c2 : 255;
 					} catch (e2) {
 						out = 'run_not_available: ' + (e && (e.message || e)) + '; popen: ' + (e2 && (e2.message || e2));
 					}
