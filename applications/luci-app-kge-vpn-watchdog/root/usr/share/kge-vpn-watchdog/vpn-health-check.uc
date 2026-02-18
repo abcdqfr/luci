@@ -5,7 +5,7 @@
 
 let cursor = require('uci').cursor;
 let fs = require('fs');
-let run = require('run');
+// run module is rpcd-only; use fs.popen for ifup/ifdown when running standalone (cron, CLI)
 
 let default_sites_path = '/etc/kge-vpn-watchdog/sites.conf';
 let watchdog_section = null;
@@ -13,9 +13,9 @@ let watchdog_section = null;
 function get_uci(key, default_val) {
 	let u = cursor();
 	u.load('vpn_watchdog');
-	let s = u.sections('vpn_watchdog', 'watchdog');
-	if (s && s.length > 0) watchdog_section = s[0]['.name'];
-	let v = watchdog_section ? u.get('vpn_watchdog', watchdog_section, key) : null;
+	let sec = u.get_first('vpn_watchdog', 'watchdog');
+	if (sec) watchdog_section = sec;
+	let v = sec ? u.get('vpn_watchdog', sec, key) : null;
 	u.unload();
 	return v != null ? v : default_val;
 }
@@ -39,7 +39,7 @@ function detect_wg_iface() {
 			return k;
 		}
 		let cfg = v.config;
-		if (cfg && /^peer_[0-9]+$/.test(cfg)) {
+		if (cfg && match(cfg, /^peer_[0-9]+$/)) {
 			u.load('wireguard');
 			if (u.get('wireguard', cfg, 'public_key')) {
 				u.unload();
@@ -68,11 +68,10 @@ function peers_list(vpn_iface) {
 	if (cur) {
 		gid = u.get('wireguard', cur, 'group_id');
 	}
+	let all = u.get_all('wireguard') || {};
 	if (!gid) {
-		let secs = u.sections('wireguard', 'peers') || [];
-		for (let i = 0; i < secs.length; i++) {
-			let sid = secs[i]['.name'];
-			if (sid && /^peer_[0-9]+$/.test(sid)) {
+		for (let sid in all) {
+			if (match(sid, /^peer_[0-9]+$/)) {
 				gid = u.get('wireguard', sid, 'group_id');
 				if (gid) break;
 			}
@@ -83,10 +82,8 @@ function peers_list(vpn_iface) {
 		return [];
 	}
 	let out = [];
-	let secs = u.sections('wireguard', 'peers') || [];
-	for (let i = 0; i < secs.length; i++) {
-		let sid = secs[i]['.name'];
-		if (sid && /^peer_[0-9]+$/.test(sid) && u.get('wireguard', sid, 'group_id') === gid) {
+	for (let sid in all) {
+		if (match(sid, /^peer_[0-9]+$/) && u.get('wireguard', sid, 'group_id') === gid) {
 			out.push(sid);
 		}
 	}
@@ -137,7 +134,8 @@ function ensure_polling_interface(name, vpn_iface) {
 
 function teardown_polling_interface(name) {
 	try {
-		run('ifdown ' + name + ' 2>/dev/null', 10);
+		let fp = fs.popen('ifdown ' + name + ' 2>/dev/null', 'r');
+		if (fp) { fp.read('all'); fp.close(); }
 	} catch (e) {}
 	let u = cursor();
 	u.load('network');
@@ -151,7 +149,7 @@ function log(msg, log_path) {
 	let line = ts ? (ts.read('all') || '').trim() : '';
 	if (ts) ts.close();
 	let s = '[vpn] ' + (line || '') + ' ' + msg;
-	console.log(s);
+	print(s, "\n");
 	if (log_path && log_path !== '') {
 		try {
 			let f = fs.open(log_path, 'a');
@@ -162,7 +160,7 @@ function log(msg, log_path) {
 
 function err(msg, log_path) {
 	let s = '[vpn] ' + msg;
-	console.error(s);
+	print(s, "\n");
 	if (log_path && log_path !== '') {
 		try {
 			let f = fs.open(log_path, 'a');
@@ -172,7 +170,7 @@ function err(msg, log_path) {
 }
 
 function normalize_url(u) {
-	if (/^https?:\/\//.test(u)) return u;
+	if (match(u, /^https?:\/\//)) return u;
 	return 'https://' + u.replace(/\/+$/, '') + '/';
 }
 
@@ -186,7 +184,7 @@ function check_site(url, block, success, check_iface, connect_to, max_time) {
 	let fp = fs.popen(cmd, 'r');
 	let code = (fp.read('all') || '').trim();
 	fp.close();
-	let ok = /^2[0-9][0-9]$/.test(code);
+	let ok = match(code, /^2[0-9][0-9]$/);
 	if (!ok) {
 		try { fs.unlink(tmp); } catch (e) {}
 		return false;
@@ -197,12 +195,12 @@ function check_site(url, block, success, check_iface, connect_to, max_time) {
 		fs.unlink(tmp);
 	} catch (e) {}
 	if (block && block !== '-') {
-		let re = new RegExp(block, 'i');
-		if (re.test(body)) return false;
+		let re = regexp(block, 'i');
+		if (match(body, re)) return false;
 	}
 	if (success && success !== '-') {
-		let re = new RegExp(success, 'i');
-		if (!re.test(body)) return false;
+		let re = regexp(success, 'i');
+		if (!match(body, re)) return false;
 	}
 	return true;
 }
@@ -243,7 +241,8 @@ function do_switch_to(iface, id) {
 	u.commit('network');
 	u.unload();
 	try {
-		run('ifup ' + iface + ' 2>/dev/null', 15);
+		let fp = fs.popen('ifup ' + iface + ' 2>/dev/null', 'r');
+		if (fp) { fp.read('all'); fp.close(); }
 	} catch (e) {}
 	return true;
 }
@@ -271,9 +270,11 @@ function main() {
 	if (vpn_iface === '') {
 		let u = cursor();
 		u.load('wireguard');
-		let secs = u.sections('wireguard', 'peers') || [];
+		let all = u.get_all('wireguard') || {};
+		let has_peers = false;
+		for (let sid in all) { if (match(sid, /^peer_[0-9]+$/)) { has_peers = true; break; } }
 		u.unload();
-		if (secs.length > 0) {
+		if (has_peers) {
 			err('no WireGuard interface in network. Set vpn_iface in LuCI (Services → KGE VPN Watchdog) to the client interface name, or connect VPN once so the interface exists.');
 		} else {
 			err('no WireGuard interface and no wireguard peers in UCI.');

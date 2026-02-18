@@ -1,4 +1,4 @@
-# KGE VPN Watchdog LuCI app. Enable/disable, run now, logs. Engine = sh scripts.
+# KGE VPN Watchdog LuCI app. Enable/disable, run now, logs. Engine = ucode (ADR-0005).
 # call BuildPackage (via luci.mk) - so OpenWrt feed scan discovers this package
 include $(TOPDIR)/rules.mk
 
@@ -8,6 +8,6 @@ LUCI_PKGARCH:=all
 
 PKG_LICENSE:=GPL-2.0-only
 PKG_MAINTAINER:=Brandon Hendershot <brandonhendershot@gmail.com>
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 include ../../luci.mk
