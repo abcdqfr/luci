@@ -91,8 +91,24 @@ return view.extend({
     const logPath = (log.path != null && log.path !== '') ? log.path : (status.log_path || '');
     const logLines = (log.lines != null) ? String(log.lines) : '';
     const logTail = parseInt(status.log_tail_lines, 10) || 200;
-    const sitesContent = (sites.content != null) ? String(sites.content) : '';
     const sitesPath = (sites.path != null) ? String(sites.path) : '';
+    // Parse existing content: backend is name TAB url TAB block TAB success; we show only domains (one per line)
+    const sitesContentRaw = (sites.content != null) ? String(sites.content) : '';
+    const sitesContent = (function () {
+      const lines = sitesContentRaw.split(/\n/);
+      const domains = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line === '' || line.indexOf('#') === 0) continue;
+        const parts = line.split(/\t/);
+        const url = (parts[1] != null && parts[1].trim() !== '') ? parts[1].trim() : (parts[0] != null ? parts[0].trim() : '');
+        if (url !== '') {
+          const domain = url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+          if (domain) domains.push(domain);
+        }
+      }
+      return domains.join('\n');
+    })();
     const peers = (peersData.peers != null) ? peersData.peers : [];
     const whitelist = (peersData.whitelist != null) ? peersData.whitelist : [];
     const whitelistSet = new Set(Array.isArray(whitelist) ? whitelist : (whitelist ? String(whitelist).trim().split(/\s+/) : []));
@@ -159,16 +175,25 @@ return view.extend({
     const sitesTextarea = E('textarea', {
       id: 'kge-vpn-watchdog-sites',
       class: 'cbi-input-textarea',
-      rows: 10,
+      rows: 6,
+      placeholder: 'reddit.com\nyoutube.com\nwikipedia.org',
       style: 'width: 100%; font-family: monospace; font-size: 0.9em;'
     });
     sitesTextarea.value = sitesContent;
 
+    const DEFAULT_BLOCK = 'blocked|access.denied|captcha|cf-browser|challenge|verify';
     const saveSitesBtn = E('button', {
       class: 'btn cbi-button cbi-button-apply',
       click: function () {
         saveSitesBtn.disabled = true;
-        set_sites({ content: sitesTextarea.value || '' }).then(function (r) {
+        const raw = (sitesTextarea.value || '').trim();
+        const domains = raw.split(/\n/).map(function (s) { return s.trim(); }).filter(function (s) { return s !== '' && s.indexOf('#') !== 0; });
+        const content = domains.map(function (d) {
+          const domain = d.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim() || d;
+          const slug = domain.split('.')[0] || domain;
+          return slug + '\t' + domain + '\t' + DEFAULT_BLOCK + '\t' + slug;
+        }).join('\n');
+        set_sites({ content: content }).then(function (r) {
           saveSitesBtn.disabled = false;
           var msg = (r && r.ok) ? _('Sites saved.') : ((r && r.error) ? r.error : _('Save site list failed.'));
           ui.addNotification(r && r.ok ? null : msg, msg, r && r.ok ? 'info' : 'error');
@@ -201,33 +226,29 @@ return view.extend({
 
     const siteSection = E('div', { class: 'cbi-section' }, [
       E('h3', { class: 'cbi-section-title' }, _('Site list')),
-      E('p', { class: 'cbi-value-description' }, _('One line per site: name TAB url_or_domain TAB block_pattern TAB success_pattern. Use domain (e.g. google.com, wikipedia.org) or full https://... ; http/https handled. Empty or # lines ignored. File: ') + (sitesPath || '—')),
+      E('p', { class: 'cbi-value-description' }, _('One domain per line for connectivity checks (ingress only). Example: reddit.com, youtube.com, wikipedia.org. Empty and # lines ignored. File: ') + (sitesPath || '—')),
       E('div', { class: 'cbi-section-node' }, [sitesTextarea]),
       E('div', { class: 'cbi-section-node' }, [saveSitesBtn])
     ]);
 
     const peerCheckboxes = {};
-    const peerListEl = E('div', { class: 'cbi-section-node', id: 'kge-vpn-watchdog-peers' });
-    const regionToIds = {};
+    const regionToPeers = {};
+    const NO_REGION = '\u2014';
     peers.forEach(function (p) {
       const id = p.id || p;
-      const label = id + (p.endpoint ? ' — ' + p.endpoint : '') + (p.description ? ' (' + p.description + ')' : '');
       const checked = useAllWhenEmpty || whitelistSet.has(id);
       const cb = E('input', { type: 'checkbox', id: 'peer-' + id, 'data-peer-id': id, 'data-region': p.region || '', checked: checked });
       peerCheckboxes[id] = cb;
-      peerListEl.appendChild(E('label', { class: 'cbi-input-checkbox', style: 'display: block; margin: 0.25em 0;' }, [cb, ' ', label]));
-      const r = (p.region && p.region.trim()) ? p.region.trim() : '';
-      if (r) {
-        if (!regionToIds[r]) regionToIds[r] = [];
-        regionToIds[r].push(id);
-      }
+      const r = (p.region && String(p.region).trim()) ? String(p.region).trim() : NO_REGION;
+      if (!regionToPeers[r]) regionToPeers[r] = [];
+      regionToPeers[r].push({ id: id, endpoint: p.endpoint || '', description: p.description || '', cb: cb });
     });
     const selectAllPeers = function (checked) {
       Object.keys(peerCheckboxes).forEach(function (id) { peerCheckboxes[id].checked = checked; });
     };
     const setRegion = function (region, checked) {
-      (regionToIds[region] || []).forEach(function (id) {
-        if (peerCheckboxes[id]) peerCheckboxes[id].checked = checked;
+      (regionToPeers[region] || []).forEach(function (row) {
+        if (row.cb) row.cb.checked = checked;
       });
     };
     const getSelectedPeers = function () {
@@ -258,17 +279,53 @@ return view.extend({
         });
       }
     }, _('Refresh endpoints'));
-    const regionToggles = [];
-    const regions = Object.keys(regionToIds).sort();
-    regions.forEach(function (reg) {
-      regionToggles.push(E('button', { class: 'btn cbi-button cbi-button-positive', style: 'margin: 0 0.2em 0.2em 0;', click: function () { setRegion(reg, true); } }, _('All %s').replace('%s', reg)));
-      regionToggles.push(E('button', { class: 'btn cbi-button', style: 'margin: 0 0.2em 0.2em 0;', click: function () { setRegion(reg, false); } }, _('None %s').replace('%s', reg)));
+
+    const regionOrder = Object.keys(regionToPeers).sort(function (a, b) {
+      if (a === NO_REGION) return 1;
+      if (b === NO_REGION) return -1;
+      return a.localeCompare(b);
     });
+    const peerListEl = E('div', { class: 'cbi-section-node', id: 'kge-vpn-watchdog-peers', style: 'max-height: 28em; overflow: auto;' });
+    if (regionOrder.length === 0) {
+      peerListEl.appendChild(E('p', { class: 'cbi-value-description' }, _('No endpoints found. Check WireGuard UCI and VPN interface.')));
+    }
+    regionOrder.forEach(function (reg) {
+      const rows = regionToPeers[reg] || [];
+      const regionLabel = reg === NO_REGION ? _('No region') : reg;
+      const summaryContent = E('span', {}, [
+        E('strong', {}, regionLabel + ' (' + rows.length + ')'),
+        ' \u2002 ',
+        E('button', { type: 'button', class: 'btn cbi-button cbi-button-positive', style: 'margin-left: 0.5em;', click: function (e) { e.preventDefault(); setRegion(reg, true); } }, _('Select all')),
+        ' ',
+        E('button', { type: 'button', class: 'btn cbi-button', click: function (e) { e.preventDefault(); setRegion(reg, false); } }, _('Deselect all'))
+      ]);
+      const table = E('table', { class: 'table cbi-section-table', style: 'margin: 0.25em 0; width: 100%;' }, [
+        E('thead', {}, E('tr', {}, [
+          E('th', { style: 'width: 2em;' }, E('input', { type: 'checkbox', title: _('Select all'), click: function () { setRegion(reg, this.checked); } })),
+          E('th', {}, _('Endpoint ID')),
+          E('th', {}, _('Address')),
+          E('th', {}, _('Description'))
+        ])),
+        E('tbody', {}, rows.map(function (row) {
+          return E('tr', {}, [
+            E('td', {}, row.cb),
+            E('td', { style: 'font-family: monospace;' }, row.id),
+            E('td', { style: 'font-family: monospace; font-size: 0.9em;' }, row.endpoint),
+            E('td', { style: 'font-size: 0.9em;' }, row.description)
+          ]);
+        }))
+      ]);
+      const details = E('details', { class: 'cbi-section', style: 'margin-bottom: 0.5em;' }, [
+        E('summary', { style: 'cursor: pointer; padding: 0.25em 0;' }, summaryContent),
+        E('div', { style: 'max-height: 14em; overflow: auto;' }, table)
+      ]);
+      peerListEl.appendChild(details);
+    });
+
     const endpointsSection = E('div', { class: 'cbi-section' }, [
       E('h3', { class: 'cbi-section-title' }, _('VPN Endpoints')),
-      E('p', { class: 'cbi-value-description' }, _('Choose which endpoints the watchdog may use when polling. Leave all selected to allow all. Use region toggles to enable/disable by country (US, CA, UK, etc.). Save to apply.')),
+      E('p', { class: 'cbi-value-description' }, _('Choose which endpoints the watchdog may use. Grouped by country; open a group and use Select all / Deselect all for that country. Leave all selected to allow all. Save to apply.')),
       E('div', { class: 'cbi-section-node', style: 'margin-bottom: 0.5em;' }, [selectAllBtn, ' ', deselectAllBtn, ' ', savePeersBtn, ' ', refreshPeersBtn]),
-      (regions.length > 0 ? E('div', { class: 'cbi-section-node', style: 'margin-bottom: 0.5em;' }, [E('span', { style: 'margin-right: 0.5em;' }, _('Region:')), regionToggles]) : E('div')),
       peerListEl
     ]);
 

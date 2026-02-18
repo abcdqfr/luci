@@ -9,12 +9,18 @@ let default_sites_path = '/etc/kge-vpn-watchdog/sites.conf';
 
 let uci_section = null;
 
+function peer_id_ok(s) {
+	// peer_<digits>: minimal check for rpcd ucode (no split/replace/string indexing)
+	if (!s || type(s) !== 'string' || length(s) < 7) return false;
+	return index(s, 'peer_') === 0;
+}
+
 function get_uci(key, default_val) {
 	let u = cursor();
 	u.load('vpn_watchdog');
-	let s = u.sections('vpn_watchdog', 'watchdog');
-	if (s && s.length > 0) uci_section = s[0]['.name'];
-	let v = uci_section ? u.get('vpn_watchdog', uci_section, key) : null;
+	let sec = u.get_first('vpn_watchdog', 'watchdog');
+	if (sec) uci_section = sec;
+	let v = sec ? u.get('vpn_watchdog', sec, key) : null;
 	u.unload();
 	return v != null ? v : default_val;
 }
@@ -30,7 +36,7 @@ function get_wg_group_id() {
 		// Detect only what exists in UCI. Contract: network.IFACE.proto=wgclient|wireguard, .config=peer id. See BE3600-LUCI-FILE-FACTS §8.
 		let u = cursor();
 		u.load('network');
-		let nets = u.get('network') || {};
+		let nets = u.get_all('network') || {};
 		for (let k in nets) {
 			let v = nets[k];
 			if (!v || v['.type'] !== 'interface') continue;
@@ -39,7 +45,7 @@ function get_wg_group_id() {
 				break;
 			}
 			let cfg = v.config;
-			if (cfg && /^peer_[0-9]+$/.test(cfg)) {
+			if (cfg && peer_id_ok(cfg)) {
 				u.load('wireguard');
 				if (u.get('wireguard', cfg, 'public_key')) {
 					vpn_iface = k;
@@ -59,10 +65,12 @@ function get_wg_group_id() {
 	if (!cur) {
 		u = cursor();
 		u.load('wireguard');
-		let wg = u.get('wireguard') || {};
-		for (let k in wg) {
-			let v = wg[k];
-			if (v && v['.type'] !== 'wireguard' && v.group_id) return v.group_id;
+		let all = u.get_all('wireguard') || {};
+		for (let k in all) {
+			if (peer_id_ok(k)) {
+				let gid = u.get('wireguard', k, 'group_id');
+				if (gid) { u.unload(); return gid; }
+			}
 		}
 		u.unload();
 		return null;
@@ -74,33 +82,33 @@ function get_wg_group_id() {
 	return gid;
 }
 
-// Infer region/country from endpoint host or description for quick toggles (US, CA, UK, etc.).
+// Infer region/country from endpoint host or description. Use lc() and index() for rpcd ucode.
 function infer_region(host, desc) {
-	let t = ((host || '') + ' ' + (desc || '')).toLowerCase();
-	let patterns = [
-		[/\b(us|usa|united states|\.us\b|us-)/, 'US'],
-		[/\b(ca|canada|\.ca\b|ca-)/, 'CA'],
-		[/\b(uk|gb|united kingdom|\.uk\b|uk-)/, 'UK'],
-		[/\b(de|germany|\.de\b|de-)/, 'DE'],
-		[/\b(nl|netherlands|\.nl\b|nl-)/, 'NL'],
-		[/\b(fr|france|\.fr\b|fr-)/, 'FR'],
-		[/\b(sg|singapore|\.sg\b|sg-)/, 'SG'],
-		[/\b(au|australia|\.au\b|au-)/, 'AU'],
-		[/\b(jp|japan|\.jp\b|jp-)/, 'JP'],
-		[/\b(ch|switzerland|\.ch\b|ch-)/, 'CH'],
-		[/\b(se|sweden|\.se\b|se-)/, 'SE'],
-		[/\b(no|norway|\.no\b|no-)/, 'NO'],
-		[/\b(fi|finland|\.fi\b|fi-)/, 'FI'],
-		[/\b(pl|poland|\.pl\b|pl-)/, 'PL'],
-		[/\b(es|spain|\.es\b|es-)/, 'ES'],
-		[/\b(it|italy|\.it\b|it-)/, 'IT'],
-		[/\b(br|brazil|\.br\b|br-)/, 'BR'],
-		[/\b(in|india|\.in\b|in-)/, 'IN'],
-		[/\b(hk|hong kong|\.hk\b|hk-)/, 'HK'],
-		[/\b(kr|korea|\.kr\b|kr-)/, 'KR']
+	let t = lc((host || '') + ' ' + (desc || ''));
+	let pairs = [
+		['us', 'US'], ['usa', 'US'], ['united states', 'US'], ['.us', 'US'], ['us-', 'US'],
+		['ca', 'CA'], ['canada', 'CA'], ['.ca', 'CA'], ['ca-', 'CA'],
+		['uk', 'UK'], ['gb', 'UK'], ['united kingdom', 'UK'], ['.uk', 'UK'], ['uk-', 'UK'],
+		['de', 'DE'], ['germany', 'DE'], ['.de', 'DE'], ['de-', 'DE'],
+		['nl', 'NL'], ['netherlands', 'NL'], ['.nl', 'NL'], ['nl-', 'NL'],
+		['fr', 'FR'], ['france', 'FR'], ['.fr', 'FR'], ['fr-', 'FR'],
+		['sg', 'SG'], ['singapore', 'SG'], ['.sg', 'SG'], ['sg-', 'SG'],
+		['au', 'AU'], ['australia', 'AU'], ['.au', 'AU'], ['au-', 'AU'],
+		['jp', 'JP'], ['japan', 'JP'], ['.jp', 'JP'], ['jp-', 'JP'],
+		['ch', 'CH'], ['switzerland', 'CH'], ['.ch', 'CH'], ['ch-', 'CH'],
+		['se', 'SE'], ['sweden', 'SE'], ['.se', 'SE'], ['se-', 'SE'],
+		['no', 'NO'], ['norway', 'NO'], ['.no', 'NO'], ['no-', 'NO'],
+		['fi', 'FI'], ['finland', 'FI'], ['.fi', 'FI'], ['fi-', 'FI'],
+		['pl', 'PL'], ['poland', 'PL'], ['.pl', 'PL'], ['pl-', 'PL'],
+		['es', 'ES'], ['spain', 'ES'], ['.es', 'ES'], ['es-', 'ES'],
+		['it', 'IT'], ['italy', 'IT'], ['.it', 'IT'], ['it-', 'IT'],
+		['br', 'BR'], ['brazil', 'BR'], ['.br', 'BR'], ['br-', 'BR'],
+		['in', 'IN'], ['india', 'IN'], ['.in', 'IN'], ['in-', 'IN'],
+		['hk', 'HK'], ['hong kong', 'HK'], ['.hk', 'HK'], ['hk-', 'HK'],
+		['kr', 'KR'], ['korea', 'KR'], ['.kr', 'KR'], ['kr-', 'KR']
 	];
-	for (let i = 0; i < patterns.length; i++) {
-		if (patterns[i][0].test(t)) return patterns[i][1];
+	for (let i = 0; i < pairs.length; i++) {
+		if (index(t, pairs[i][0]) >= 0) return pairs[i][1];
 	}
 	return '';
 }
@@ -111,11 +119,9 @@ function collect_peers_from_wireguard(gid) {
 	let peers = [];
 	let u = cursor();
 	u.load('wireguard');
-	let secs = u.sections('wireguard', 'peers') || [];
-	for (let i = 0; i < secs.length; i++) {
-		let sec = secs[i];
-		let sid = sec['.name'];
-		if (!sid || !/^peer_[0-9]+$/.test(sid)) continue;
+	let all = u.get_all('wireguard') || {};
+	for (let sid in all) {
+		if (!peer_id_ok(sid)) continue;
 		let pk = u.get('wireguard', sid, 'public_key');
 		if (!pk) continue;
 		if (gid != null) {
@@ -127,10 +133,10 @@ function collect_peers_from_wireguard(gid) {
 			endpoint = (u.get('wireguard', sid, 'endpoint_host') || u.get('wireguard', sid, 'host') || '') + ':' + (u.get('wireguard', sid, 'endpoint_port') || u.get('wireguard', sid, 'port') || '');
 		let desc = u.get('wireguard', sid, 'name') || u.get('wireguard', sid, 'location') || u.get('wireguard', sid, 'description') || '';
 		let region = infer_region(endpoint, desc);
-		peers.push({ id: sid, endpoint: endpoint, description: desc, region: region });
+		push(peers, { id: sid, endpoint: endpoint, description: desc, region: region });
 	}
 	u.unload();
-	peers.sort((a, b) => (a.id < b.id ? -1 : 1));
+	sort(peers, function(a, b) { return (a.id < b.id ? -1 : 1); });
 	return peers;
 }
 
@@ -139,9 +145,9 @@ let methods = {
 		call: function() {
 			let gid = get_wg_group_id();
 			let whitelist_raw = get_uci('peer_whitelist', '') || '';
-			let whitelist = (whitelist_raw === '') ? [] : whitelist_raw.trim().split(/\s+/);
+			let whitelist = (whitelist_raw === '') ? [] : split(ltrim(rtrim(whitelist_raw)), /\s+/);
 			let peers = collect_peers_from_wireguard(gid);
-			if (peers.length === 0 && gid == null)
+			if (length(peers) === 0 && gid == null)
 				peers = collect_peers_from_wireguard(null);
 			return { peers: peers, whitelist: whitelist };
 		}
@@ -150,13 +156,12 @@ let methods = {
 		args: { peers: [] },
 		call: function(req) {
 			let list = req.args && Array.isArray(req.args.peers) ? req.args.peers : [];
-			let val = list.map(p => String(p).trim()).filter(p => /^peer_[0-9]+$/.test(p)).join(' ');
+			let val = list.map(p => String(p).trim()).filter(p => peer_id_ok(p)).join(' ');
 			try {
 				let u = cursor();
 				u.load('vpn_watchdog');
-				let s = u.sections('vpn_watchdog', 'watchdog');
-				if (s && s.length > 0) {
-					let name = s[0]['.name'];
+				let name = u.get_first('vpn_watchdog', 'watchdog');
+				if (name) {
 					u.set('vpn_watchdog', name, 'peer_whitelist', val);
 					u.save('vpn_watchdog');
 					u.commit('vpn_watchdog');
