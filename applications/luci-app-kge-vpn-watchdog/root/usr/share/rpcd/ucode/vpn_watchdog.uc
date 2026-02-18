@@ -147,7 +147,7 @@ function collect_peers_from_wireguard(gid) {
 		push(peers, { id: sid, endpoint: endpoint, description: desc, region: region });
 	}
 	u.unload();
-	sort(peers, function(a, b) { return (a.id < b.id ? -1 : 1); });
+	sort(peers, function (a, b) { return (a.id < b.id ? -1 : 1); });
 	return peers;
 }
 
@@ -187,7 +187,7 @@ function has_non_comment_text(line) {
 
 let methods = {
 	get_peers: {
-		call: function() {
+		call: function () {
 			let gid = get_wg_group_id();
 			let whitelist_raw = get_uci('peer_whitelist', '') || '';
 			let whitelist = (whitelist_raw === '') ? [] : split(ltrim(rtrim(whitelist_raw)), /\s+/);
@@ -199,7 +199,7 @@ let methods = {
 	},
 	set_peer_whitelist: {
 		args: { peers: [] },
-		call: function(req) {
+		call: function (req) {
 			let list = (req.args && type(req.args.peers) === 'array') ? req.args.peers : [];
 			let selected = [];
 			for (let i = 0; i < length(list); i++) {
@@ -224,7 +224,7 @@ let methods = {
 		}
 	},
 	get_status: {
-		call: function() {
+		call: function () {
 			get_uci('enabled', '1');
 			return {
 				enabled: get_uci('enabled', '1') === '1',
@@ -248,33 +248,42 @@ let methods = {
 	},
 	get_log: {
 		args: { lines: 64 },
-		call: function(req) {
+		call: function (req) {
 			let path = get_uci('log_path') || '';
-			let n = req.args && req.args.lines ? parseInt(req.args.lines, 10) : parseInt(get_uci('log_tail_lines', '200'), 10);
-			if (path === '' || !fs.access(path))
-				return { lines: '', path: '' };
-			let data = fs.readfile(path);
-			if (data === null) return { lines: '', path: path };
-			let arr = split('' + data, "\n");
-			let start = length(arr) > n ? length(arr) - n : 0;
-			return { lines: join_lines(arr, start), path: path };
+			let n = req && req.args && req.args.lines ? parseInt(req.args.lines, 10) : parseInt(get_uci('log_tail_lines', '200'), 10);
+			if (n < 1 || n > 10000) n = 200;
+			try {
+				if (path === '' || !fs.access(path))
+					return { lines: '', path: path || '' };
+				let data = fs.readfile(path);
+				if (data === null) return { lines: '', path: path };
+				let arr = split('' + data, "\n");
+				let start = length(arr) > n ? length(arr) - n : 0;
+				return { lines: join_lines(arr, start), path: path };
+			} catch (e) {
+				return { lines: '', path: path || '', error: (e && (e.message || String(e))) || 'read failed' };
+			}
 		}
 	},
 	get_sites: {
-		call: function() {
-			let path = sites_path();
+		call: function () {
 			let default_content = 'reddit\treddit.com\tblocked|access.denied|captcha|cf-browser|challenge|verify\treddit\n'
 				+ 'youtube\tyoutube.com\tblocked|access.denied|captcha|cf-browser|challenge|verify\tyoutube\n'
 				+ 'wikipedia\twikipedia.org\tblocked|access.denied|captcha|cf-browser|challenge|verify\twikipedia\n';
-			if (!fs.access(path)) return { content: default_content, path: path };
-			let data = fs.readfile(path);
-			let content = (data !== null && data !== '') ? data : default_content;
-			return { content: content, path: path };
+			try {
+				let path = sites_path();
+				if (!path || !fs.access(path)) return { content: default_content, path: path || '' };
+				let data = fs.readfile(path);
+				let content = (data !== null && data !== '') ? data : default_content;
+				return { content: content, path: path };
+			} catch (e) {
+				return { content: default_content, path: '', error: (e && (e.message || String(e))) || 'read failed' };
+			}
 		}
 	},
 	set_sites: {
 		args: { content: '' },
-		call: function(req) {
+		call: function (req) {
 			let path = sites_path();
 			let content = (req.args && req.args.content != null) ? ('' + req.args.content) : '';
 			let dir = fs.dirname(path);
@@ -291,7 +300,7 @@ let methods = {
 		}
 	},
 	apply_cron: {
-		call: function() {
+		call: function () {
 			let enabled = get_uci('cron_enabled', '1') === '1';
 			let schedule = get_uci('cron_schedule', '');
 			let interval = get_uci('cron_interval', '5');
@@ -327,27 +336,34 @@ let methods = {
 	},
 	run_now: {
 		args: { dry_run: true },
-		call: function(req) {
-			let dry = req.args && req.args.dry_run;
-			let timeout = parseInt(get_uci('run_timeout', '120'), 10) || 120;
-			let shCmd = dry ? ('VPN_DRY_RUN=1 ' + script_path + ' 2>&1') : (script_path + ' 2>&1');
-			let out = '';
+		call: function (req) {
 			let code = 255;
+			let out = '';
 			try {
-				let run = require('run');
-				let result = run(shCmd, timeout);
-				code = result && result.code != null ? result.code : 255;
-				out = (result && result.stdout) ? result.stdout : '';
-			} catch (e) {
+				let dry = req && req.args && req.args.dry_run;
+				let timeout = parseInt(get_uci('run_timeout', '120'), 10) || 120;
+				if (timeout < 1 || timeout > 600) timeout = 120;
+				let shCmd = dry ? ('VPN_DRY_RUN=1 ' + script_path + ' 2>&1') : (script_path + ' 2>&1');
 				try {
-					let fullCmd = "/bin/sh -c '" + shCmd + "'";
-					let fp = fs.popen(fullCmd, 'r');
-					out = fp.read('all') || '';
-					code = fp.close();
-					if (code == null || code < 0) code = 255;
-				} catch (e2) {
-					out = 'run_not_available: ' + (e.message || e) + '; popen: ' + (e2.message || e2);
+					let run = require('run');
+					let result = run(shCmd, timeout);
+					code = (result && result.code != null) ? Number(result.code) : 255;
+					out = (result && result.stdout != null) ? String(result.stdout) : '';
+				} catch (e) {
+					try {
+						let fullCmd = "/bin/sh -c '" + shCmd + "'";
+						let fp = fs.popen(fullCmd, 'r');
+						out = fp.read('all');
+						out = (out != null) ? String(out) : '';
+						let c = fp.close();
+						code = (c != null && c >= 0) ? Number(c) : 255;
+					} catch (e2) {
+						out = 'run_not_available: ' + (e && (e.message || e)) + '; popen: ' + (e2 && (e2.message || e2));
+					}
 				}
+			} catch (e) {
+				code = 255;
+				out = 'error: ' + (e && (e.message || String(e)) || 'unknown');
 			}
 			return { exitcode: code, output: out };
 		}
