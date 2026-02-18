@@ -1,22 +1,45 @@
-#!/bin/sh
-# Create /etc/config/vpn_watchdog with all options. LuCI and script both read this.
-# Writable site list lives under /etc (overlay); /usr is read-only (see docs/LUCI-LESSONS.md).
-touch /etc/config/vpn_watchdog
-uci -q get vpn_watchdog.@watchdog[0] >/dev/null 2>&1 || uci add vpn_watchdog watchdog
-mkdir -p /etc/kge-vpn-watchdog
-uci -q set vpn_watchdog.@watchdog[0].enabled=1
-uci -q set vpn_watchdog.@watchdog[0].log_path=
-uci -q set vpn_watchdog.@watchdog[0].sites_file=/etc/kge-vpn-watchdog/sites.conf
-uci -q set vpn_watchdog.@watchdog[0].vpn_iface=
-uci -q set vpn_watchdog.@watchdog[0].polling_iface=
-uci -q set vpn_watchdog.@watchdog[0].sleep_after_switch=3
-uci -q set vpn_watchdog.@watchdog[0].curl_connect_timeout=3
-uci -q set vpn_watchdog.@watchdog[0].curl_max_time=8
-uci -q set vpn_watchdog.@watchdog[0].cron_enabled=1
-uci -q set vpn_watchdog.@watchdog[0].cron_interval=5
-uci -q set vpn_watchdog.@watchdog[0].cron_schedule=
-uci -q set vpn_watchdog.@watchdog[0].run_timeout=120
-uci -q set vpn_watchdog.@watchdog[0].log_tail_lines=200
-uci -q set vpn_watchdog.@watchdog[0].peer_whitelist=
-uci commit vpn_watchdog
-return 0
+#!/usr/bin/env ucode
+'use strict';
+// UCI defaults for vpn_watchdog (zero shell; ucode only).
+// Creates /etc/config/vpn_watchdog and sets defaults. Writable site list under /etc (overlay).
+
+let cursor = require('uci').cursor;
+let fs = require('fs');
+
+// Ensure config file exists (touch)
+try {
+	let f = fs.open('/etc/config/vpn_watchdog', 'a');
+	if (f) f.close();
+} catch (e) {}
+
+let u = cursor();
+u.load('vpn_watchdog');
+let s = u.sections('vpn_watchdog', 'watchdog');
+let sec = (s && s.length > 0) ? s[0]['.name'] : null;
+if (!sec) {
+	sec = u.add('vpn_watchdog', 'watchdog');
+	if (!sec) { u.unload(); exit(1); }
+}
+u.set('vpn_watchdog', sec, 'enabled', '1');
+u.set('vpn_watchdog', sec, 'log_path', '');
+u.set('vpn_watchdog', sec, 'sites_file', '/etc/kge-vpn-watchdog/sites.conf');
+u.set('vpn_watchdog', sec, 'vpn_iface', '');
+u.set('vpn_watchdog', sec, 'polling_iface', '');
+u.set('vpn_watchdog', sec, 'sleep_after_switch', '3');
+u.set('vpn_watchdog', sec, 'curl_connect_timeout', '3');
+u.set('vpn_watchdog', sec, 'curl_max_time', '8');
+u.set('vpn_watchdog', sec, 'cron_enabled', '1');
+u.set('vpn_watchdog', sec, 'cron_interval', '5');
+u.set('vpn_watchdog', sec, 'cron_schedule', '');
+u.set('vpn_watchdog', sec, 'run_timeout', '120');
+u.set('vpn_watchdog', sec, 'log_tail_lines', '200');
+u.set('vpn_watchdog', sec, 'peer_whitelist', '');
+u.commit('vpn_watchdog');
+u.unload();
+
+// Create dir for writable sites (like mkdir -p)
+try {
+	let fp = fs.popen('mkdir -p /etc/kge-vpn-watchdog 2>/dev/null', 'r');
+	if (fp) fp.close();
+} catch (e) {}
+exit(0);

@@ -1,6 +1,6 @@
 # luci-app-kge-vpn-watchdog
 
-LuCI UI for KGE VPN Watchdog: enable/disable, log path, Run now, log viewer. Engine is the bundled shell scripts.
+LuCI UI for KGE VPN Watchdog: enable/disable, log path, Run now, log viewer. Backend and engine are ucode (zero shell; ADR-0005).
 
 ## Install
 
@@ -18,12 +18,12 @@ LuCI UI for KGE VPN Watchdog: enable/disable, log path, Run now, log viewer. Eng
 - `root/usr/share/kge-vpn-watchdog/*` → `/usr/share/kge-vpn-watchdog/`
 - `root/usr/bin/kge-vpn-watchdog` → `/usr/bin/kge-vpn-watchdog` (chmod +x)
 
-Run once: `sh /etc/uci-defaults/80_vpn_watchdog`, then restart rpcd and reload LuCI.
+Run once (if needed): `/etc/uci-defaults/80_vpn_watchdog`, then restart rpcd and reload LuCI.
 
 ## Engine
 
-- **`/usr/share/kge-vpn-watchdog/`** — `vpn-health-check.sh`, `lib_uci.sh`, `lib_sites.sh`, `lib_switch.sh`, `sites.conf`
-- **`/usr/bin/kge-vpn-watchdog`** — wrapper that runs the main script (cron and Run now use this)
+- **`/usr/share/kge-vpn-watchdog/`** — `vpn-health-check.uc` (ucode), `sites.conf`
+- **`/usr/bin/kge-vpn-watchdog`** — entry point that runs the ucode engine (cron and Run now use this)
 
 ## Cron
 

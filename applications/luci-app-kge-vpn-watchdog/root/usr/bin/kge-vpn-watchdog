@@ -1,3 +1,3 @@
-#!/bin/sh
-# Wrapper so PATH has one entry point. Engine lives in /usr/share/kge-vpn-watchdog/.
-exec /usr/share/kge-vpn-watchdog/vpn-health-check.sh "$@"
+#!/usr/bin/env sh
+# Entry point for cron and RPC run_now. Engine is ucode (ADR-0005); zero shell engine.
+exec /usr/bin/ucode /usr/share/kge-vpn-watchdog/vpn-health-check.uc "$@"
