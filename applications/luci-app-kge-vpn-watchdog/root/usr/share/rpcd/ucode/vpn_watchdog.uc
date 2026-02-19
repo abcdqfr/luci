@@ -8,6 +8,11 @@ let script_path = '/usr/bin/kge-vpn-watchdog';
 // Sites path: default /etc (writable overlay); /usr is read-only on OpenWrt.
 let default_sites_path = '/etc/kge-vpn-watchdog/sites.conf';
 
+// On-device ucode may not expose globals (String, parseInt, run module). One place for coercion.
+function to_str(x) {
+	return (x != null) ? ('' + x) : '';
+}
+
 let uci_section = null;
 
 function peer_id_ok(s) {
@@ -112,7 +117,7 @@ function infer_region(host, desc) {
 		if (index(t, pairs[i][0]) >= 0) return pairs[i][1];
 	}
 	// Generic fallback for provider descriptions like "Denmark_dk-cph-wg-001" => DK
-	let d = lc('' + (desc || ''));
+	let d = lc(to_str(desc || ''));
 	let segs = split(d, '_');
 	if (length(segs) > 1) {
 		let region_part = split(segs[1], '-');
@@ -152,7 +157,7 @@ function collect_peers_from_wireguard(gid) {
 }
 
 function trim_ws(s) {
-	return ltrim(rtrim('' + s));
+	return ltrim(rtrim(to_str(s)));
 }
 
 function split_ws(s) {
@@ -179,7 +184,7 @@ function join_space(arr) {
 }
 
 function has_non_comment_text(line) {
-	let t = ltrim('' + line);
+	let t = ltrim(to_str(line));
 	if (t === '') return false;
 	if (index(t, '#') === 0) t = ltrim(substr(t, 1));
 	return t !== '';
@@ -219,7 +224,7 @@ let methods = {
 				u.unload();
 				return { ok: true, whitelist: selected };
 			} catch (e) {
-				return { ok: false, error: e.message || ('' + e) };
+				return { ok: false, error: e.message || to_str(e) };
 			}
 		}
 	},
@@ -257,11 +262,11 @@ let methods = {
 					return { lines: '', path: path || '' };
 				let data = fs.readfile(path);
 				if (data === null) return { lines: '', path: path };
-				let arr = split('' + data, "\n");
+				let arr = split(to_str(data), "\n");
 				let start = length(arr) > n ? length(arr) - n : 0;
 				return { lines: join_lines(arr, start), path: path };
 			} catch (e) {
-				return { lines: '', path: path || '', error: (e && (e.message || String(e))) || 'read failed' };
+				return { lines: '', path: path || '', error: (e && (e.message || to_str(e))) || 'read failed' };
 			}
 		}
 	},
@@ -277,7 +282,7 @@ let methods = {
 				let content = (data !== null && data !== '') ? data : default_content;
 				return { content: content, path: path };
 			} catch (e) {
-				return { content: default_content, path: '', error: (e && (e.message || String(e))) || 'read failed' };
+				return { content: default_content, path: '', error: (e && (e.message || to_str(e))) || 'read failed' };
 			}
 		}
 	},
@@ -285,7 +290,7 @@ let methods = {
 		args: { content: '' },
 		call: function (req) {
 			let path = sites_path();
-			let content = (req.args && req.args.content != null) ? ('' + req.args.content) : '';
+			let content = (req.args && req.args.content != null) ? to_str(req.args.content) : '';
 			let dir = fs.dirname(path);
 			if (dir && !fs.access(dir))
 				fs.mkdir(dir);
@@ -293,7 +298,7 @@ let methods = {
 				fs.writefile(path, content);
 				return { ok: true, path: path };
 			} catch (e) {
-				let msg = fs.error() || (e && (e.message || e.code || ('' + e))) || 'Unknown error';
+				let msg = fs.error() || (e && (e.message || e.code || to_str(e))) || 'Unknown error';
 				if (msg === '[object Object]') msg = 'Write failed (permission or read-only?)';
 				return { ok: false, error: msg };
 			}
@@ -314,7 +319,7 @@ let methods = {
 			if (fs.access(crontab_path)) {
 				let data = fs.readfile(crontab_path);
 				if (data !== null) {
-					let lines = split('' + data, "\n");
+					let lines = split(to_str(data), "\n");
 					let kept = [];
 					for (let i = 0; i < length(lines); i++) {
 						let l = lines[i];
@@ -329,7 +334,7 @@ let methods = {
 				fs.writefile(crontab_path, out);
 				return { ok: true, cron_line: cron_line || '(disabled)' };
 			} catch (e) {
-				let msg = fs.error() || (e && (e.message || ('' + e))) || 'Cron write failed';
+				let msg = fs.error() || (e && (e.message || to_str(e))) || 'Cron write failed';
 				return { ok: false, error: msg };
 			}
 		}
@@ -344,28 +349,34 @@ let methods = {
 				let timeout = int(get_uci('run_timeout', '120'), 10) || 120;
 				if (timeout < 1 || timeout > 600) timeout = 120;
 				let shCmd = dry ? ('VPN_DRY_RUN=1 ' + script_path + ' 2>&1') : (script_path + ' 2>&1');
-				try {
-					let run = require('run');
-					let result = run(shCmd, timeout);
-					let c = (result && result.code != null) ? int(result.code, 10) : null;
-					code = (c != null && c === c) ? c : 255;
-					out = (result && result.stdout != null) ? String(result.stdout) : '';
-				} catch (e) {
+				let run_mod = null;
+				try { run_mod = require('run'); } catch (e) { run_mod = null; }
+				if (run_mod) {
+					try {
+						let result = run_mod(shCmd, timeout);
+						let c = (result && result.code != null) ? int(result.code, 10) : null;
+						code = (c != null && c === c) ? c : 255;
+						out = (result && result.stdout != null) ? to_str(result.stdout) : '';
+					} catch (e) {
+						run_mod = null;
+					}
+				}
+				if (!run_mod) {
 					try {
 						let fullCmd = "/bin/sh -c '" + shCmd + "'";
 						let fp = fs.popen(fullCmd, 'r');
 						out = fp.read('all');
-						out = (out != null) ? String(out) : '';
+						out = to_str(out);
 						let c = fp.close();
 						let c2 = (c != null && c >= 0) ? int(c, 10) : null;
 						code = (c2 != null && c2 === c2) ? c2 : 255;
 					} catch (e2) {
-						out = 'run_not_available: ' + (e && (e.message || e)) + '; popen: ' + (e2 && (e2.message || e2));
+						out = 'run_not_available: popen: ' + (e2 && (e2.message || to_str(e2)));
 					}
 				}
 			} catch (e) {
 				code = 255;
-				out = 'error: ' + (e && (e.message || String(e)) || 'unknown');
+				out = 'error: ' + (e && (e.message || to_str(e)) || 'unknown');
 			}
 			return { exitcode: code, output: out };
 		}
