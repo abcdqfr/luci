@@ -168,7 +168,11 @@ return view.extend({
         apply_cron().then(function (r) {
           applyCronBtn.disabled = false;
           ui.addNotification(r && r.ok ? null : (r && r.error) || _('Failed'), r && r.ok ? _('Cron schedule applied.') : (r && r.error) || _('Failed'), r && r.ok ? 'info' : 'error');
-        }).catch(function () { applyCronBtn.disabled = false; });
+        }).catch(function (err) {
+          applyCronBtn.disabled = false;
+          var msg = (err && (err.message || err)) ? String(err.message || err) : _('Apply cron failed (RPC error).');
+          ui.addNotification(null, msg, 'error');
+        });
       }
     }, _('Apply cron schedule'));
 
@@ -263,7 +267,11 @@ return view.extend({
         set_peer_whitelist({ peers: selected }).then(function (r) {
           savePeersBtn.disabled = false;
           ui.addNotification(r && r.ok ? null : (r && r.error) || _('Failed'), r && r.ok ? _('Endpoint selection saved. Empty = use all for polling.') : (r && r.error) || _('Failed'), r && r.ok ? 'info' : 'error');
-        }).catch(function () { savePeersBtn.disabled = false; });
+        }).catch(function (err) {
+          savePeersBtn.disabled = false;
+          var msg = (err && (err.message || err)) ? String(err.message || err) : _('Save failed (RPC error).');
+          ui.addNotification(null, msg, 'error');
+        });
       }
     }, _('Save endpoint selection'));
     const refreshPeersBtn = E('button', {

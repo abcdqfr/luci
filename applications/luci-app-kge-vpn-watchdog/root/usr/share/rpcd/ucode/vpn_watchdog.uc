@@ -216,11 +216,13 @@ let methods = {
 				let u = cursor();
 				u.load('vpn_watchdog');
 				let name = u.get_first('vpn_watchdog', 'watchdog');
-				if (name) {
-					u.set('vpn_watchdog', name, 'peer_whitelist', val);
-					u.save('vpn_watchdog');
-					u.commit('vpn_watchdog');
+				if (!name) {
+					u.unload();
+					return { ok: false, error: 'No watchdog config section. Save Basic or Expert settings first.' };
 				}
+				u.set('vpn_watchdog', name, 'peer_whitelist', val);
+				u.save('vpn_watchdog');
+				u.commit('vpn_watchdog');
 				u.unload();
 				return { ok: true, whitelist: selected };
 			} catch (e) {
