@@ -8,6 +8,6 @@ LUCI_PKGARCH:=all
 
 PKG_LICENSE:=GPL-2.0-only
 PKG_MAINTAINER:=Brandon Hendershot <brandonhendershot@gmail.com>
-PKG_RELEASE:=24
+PKG_RELEASE:=25
 
 include ../../luci.mk
