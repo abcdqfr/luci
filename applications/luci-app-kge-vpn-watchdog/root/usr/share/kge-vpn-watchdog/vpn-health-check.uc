@@ -284,7 +284,7 @@ function main() {
 
 	let active_iface = vpn_iface;
 	let polling_iface = get_uci('polling_iface', '') || 'wgclient_poll';
-	let sleep_sec = parseInt(get_uci('sleep_after_switch', '3'), 10) || 3;
+	let sleep_sec = int(get_uci('sleep_after_switch', '3'), 10) || 3;
 	let dry_run = (getenv('VPN_DRY_RUN') || '0').trim();
 	if (dry_run !== '0' && dry_run !== '') dry_run = '1';
 	let log_path = get_uci('log_path', '') || '';
