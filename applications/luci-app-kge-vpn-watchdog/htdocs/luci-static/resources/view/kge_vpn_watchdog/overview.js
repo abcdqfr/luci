@@ -266,7 +266,11 @@ return view.extend({
         const selected = getSelectedPeers();
         set_peer_whitelist({ peers: selected }).then(function (r) {
           savePeersBtn.disabled = false;
-          ui.addNotification(r && r.ok ? null : (r && r.error) || _('Failed'), r && r.ok ? _('Endpoint selection saved. Empty = use all for polling.') : (r && r.error) || _('Failed'), r && r.ok ? 'info' : 'error');
+          // Unwrap RPC response if LuCI/rpcd wraps it (e.g. under .result)
+          if (r && typeof r === 'object' && r.result !== undefined) r = r.result;
+          var ok = r && r.ok;
+          var msg = ok ? _('Endpoint selection saved. Empty = use all for polling.') : ((r && r.error) ? String(r.error) : _('Save endpoint selection failed.'));
+          ui.addNotification(null, msg, ok ? 'info' : 'error');
         }).catch(function (err) {
           savePeersBtn.disabled = false;
           var msg = (err && (err.message || err)) ? String(err.message || err) : _('Save failed (RPC error).');
