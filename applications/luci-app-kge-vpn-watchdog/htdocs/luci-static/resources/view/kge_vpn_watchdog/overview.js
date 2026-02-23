@@ -266,14 +266,29 @@ return view.extend({
         const selected = getSelectedPeers();
         set_peer_whitelist({ peers: selected }).then(function (r) {
           savePeersBtn.disabled = false;
-          // Unwrap RPC response if LuCI/rpcd wraps it (e.g. under .result)
-          if (r && typeof r === 'object' && r.result !== undefined) r = r.result;
-          var ok = r && r.ok;
-          var msg = ok ? _('Endpoint selection saved. Empty = use all for polling.') : ((r && r.error) ? String(r.error) : _('Save endpoint selection failed.'));
+          var payload = r;
+          if (r && typeof r === 'object') {
+            if (r.result !== undefined) payload = r.result;
+            else if (r.data !== undefined) payload = r.data;
+            else if (r.response !== undefined) payload = r.response;
+          }
+          var ok = payload && payload.ok;
+          var msg;
+          if (ok) {
+            msg = _('Endpoint selection saved. Empty = use all for polling.');
+          } else {
+            var errVal = payload && (payload.error !== undefined ? payload.error : (payload.message !== undefined ? payload.message : payload.msg));
+            if (errVal != null && errVal !== '') {
+              msg = (typeof errVal === 'object') ? (errVal.message || JSON.stringify(errVal)) : String(errVal);
+            } else {
+              msg = _('Save failed (no error details from server).');
+            }
+          }
           ui.addNotification(null, msg, ok ? 'info' : 'error');
         }).catch(function (err) {
           savePeersBtn.disabled = false;
-          var msg = (err && (err.message || err)) ? String(err.message || err) : _('Save failed (RPC error).');
+          var errVal = err && (err.message !== undefined ? err.message : (err.data !== undefined ? err.data : err));
+          var msg = (errVal != null && errVal !== '') ? ((typeof errVal === 'object') ? (errVal.message || JSON.stringify(errVal)) : String(errVal)) : _('Save failed (no error details).');
           ui.addNotification(null, msg, 'error');
         });
       }
